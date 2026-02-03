@@ -1,15 +1,15 @@
 import express from "express";
-import cors from "cors";
 import rateLimit from "express-rate-limit";
+import cors from "cors";
 
 const app = express();
-
-/* ================= MIDDLEWARE ================= */
 
 app.use(cors());
 app.use(express.json());
 
-/* ================= RATE LIMIT ================= */
+/* =========================
+   RATE LIMIT
+========================= */
 
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -17,25 +17,29 @@ const signupLimiter = rateLimit({
   message: "Too many accounts created. Try again later."
 });
 
-/* ================= ENV ================= */
+/* =========================
+   ENV
+========================= */
 
-const KOMGA_URL  = process.env.KOMGA_URL;
+const KOMGA_URL = process.env.KOMGA_URL;
 const KOMGA_USER = process.env.KOMGA_USER;
 const KOMGA_PASS = process.env.KOMGA_PASS;
 
 function authHeader() {
-  return "Basic " + Buffer
-    .from(`${KOMGA_USER}:${KOMGA_PASS}`)
-    .toString("base64");
+  return "Basic " + Buffer.from(KOMGA_USER + ":" + KOMGA_PASS).toString("base64");
 }
 
-/* ================= VALIDATION ================= */
+/* =========================
+   EMAIL VALIDATION
+========================= */
 
 function validEmail(e) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 
-/* ================= SIGNUP ================= */
+/* =========================
+   SIGNUP
+========================= */
 
 app.post("/signup", signupLimiter, async (req, res) => {
   const { email, password, website } = req.body;
@@ -54,7 +58,7 @@ app.post("/signup", signupLimiter, async (req, res) => {
 
   try {
 
-    /* ===== GET USERS ===== */
+    /* ===== CHECK EXISTING ===== */
 
     const check = await fetch(`${KOMGA_URL}/api/v2/users`, {
       headers: { Authorization: authHeader() }
@@ -63,7 +67,7 @@ app.post("/signup", signupLimiter, async (req, res) => {
     if (!check.ok) {
       const t = await check.text();
       console.error("User list failed:", check.status, t);
-      return res.status(500).send("Komga auth failed");
+      return res.status(check.status).send(t);
     }
 
     const users = await check.json();
@@ -71,23 +75,21 @@ app.post("/signup", signupLimiter, async (req, res) => {
     if (users.some(u => u.email.toLowerCase() === email.toLowerCase()))
       return res.status(400).send("Account already exists");
 
-    /* ===== CREATE USER (v2 schema) ===== */
+
+    /* ===== CREATE USER ===== */
 
     const create = await fetch(`${KOMGA_URL}/api/v2/users`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json",
-        Authorization: authHeader()
+        "Authorization": authHeader()
       },
       body: JSON.stringify({
         email: email,
         password: password,
         roles: ["USER"],
-        sharedLibraries: {
-          all: true,
-          libraryIds: []
-        },
+        sharedAllLibraries: true,
+        sharedLibrariesIds: [],
         labelsAllow: [],
         labelsExclude: []
       })
@@ -96,24 +98,28 @@ app.post("/signup", signupLimiter, async (req, res) => {
     if (!create.ok) {
       const msg = await create.text();
       console.error("Create failed:", create.status, msg);
-      return res.status(400).send(msg);
+      return res.status(create.status).send(msg);
     }
 
     res.send("Account created");
 
   } catch (err) {
-    console.error("Server error:", err);
+    console.error(err);
     res.status(500).send("Server error");
   }
 });
 
-/* ================= HEALTH ================= */
+/* =========================
+   HEALTH
+========================= */
 
-app.get("/", (_, res) => {
+app.get("/", (req, res) => {
   res.send("Signup API running");
 });
 
-/* ================= START ================= */
+/* =========================
+   START
+========================= */
 
 const PORT = process.env.PORT || 3000;
 
