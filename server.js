@@ -4,17 +4,20 @@ import rateLimit from "express-rate-limit";
 
 const app = express();
 
+/* ================= MIDDLEWARE ================= */
+
 app.use(cors());
 app.use(express.json());
 
-/* ========= RATE LIMIT ========= */
+/* ================= RATE LIMIT ================= */
 
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5
+  max: 5,
+  message: "Too many accounts created. Try again later."
 });
 
-/* ========= ENV ========= */
+/* ================= ENV ================= */
 
 const KOMGA_URL  = process.env.KOMGA_URL;
 const KOMGA_USER = process.env.KOMGA_USER;
@@ -26,31 +29,40 @@ function authHeader() {
     .toString("base64");
 }
 
+/* ================= VALIDATION ================= */
+
 function validEmail(e) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
 
-/* ========= SIGNUP ========= */
+/* ================= SIGNUP ================= */
 
 app.post("/signup", signupLimiter, async (req, res) => {
-
   const { email, password, website } = req.body;
 
+  // honeypot bot trap
   if (website) return res.status(400).send("Bot rejected");
-  if (!email || !password) return res.status(400).send("Missing fields");
-  if (!validEmail(email)) return res.status(400).send("Invalid email");
-  if (password.length < 6) return res.status(400).send("Password too short");
+
+  if (!email || !password)
+    return res.status(400).send("Missing fields");
+
+  if (!validEmail(email))
+    return res.status(400).send("Invalid email");
+
+  if (password.length < 6)
+    return res.status(400).send("Password must be at least 6 characters");
 
   try {
 
-    /* check existing users */
+    /* ===== GET USERS ===== */
 
     const check = await fetch(`${KOMGA_URL}/api/v2/users`, {
       headers: { Authorization: authHeader() }
     });
 
     if (!check.ok) {
-      console.error("Auth failed status:", check.status);
+      const t = await check.text();
+      console.error("User list failed:", check.status, t);
       return res.status(500).send("Komga auth failed");
     }
 
@@ -59,7 +71,7 @@ app.post("/signup", signupLimiter, async (req, res) => {
     if (users.some(u => u.email.toLowerCase() === email.toLowerCase()))
       return res.status(400).send("Account already exists");
 
-    /* create */
+    /* ===== CREATE USER (v2 schema) ===== */
 
     const create = await fetch(`${KOMGA_URL}/api/v2/users`, {
       method: "POST",
@@ -71,30 +83,40 @@ app.post("/signup", signupLimiter, async (req, res) => {
       body: JSON.stringify({
         email: email,
         password: password,
-        roles: ["ROLE_USER"]
+        roles: ["USER"],
+        sharedLibraries: {
+          all: true,
+          libraryIds: []
+        },
+        labelsAllow: [],
+        labelsExclude: []
       })
     });
 
     if (!create.ok) {
-      const t = await create.text();
-      console.error("Create failed:", t);
-      return res.status(400).send(t);
+      const msg = await create.text();
+      console.error("Create failed:", create.status, msg);
+      return res.status(400).send(msg);
     }
 
     res.send("Account created");
 
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error("Server error:", err);
     res.status(500).send("Server error");
   }
 });
 
-/* ========= HEALTH ========= */
+/* ================= HEALTH ================= */
 
-app.get("/", (_,res)=>res.send("Signup API running"));
+app.get("/", (_, res) => {
+  res.send("Signup API running");
+});
 
-/* ========= START ========= */
+/* ================= START ================= */
 
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Server running")
-);
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on", PORT);
+});
