@@ -1,8 +1,10 @@
 import express from "express";
-import fetch from "node-fetch";
 import rateLimit from "express-rate-limit";
+import cors from "cors";
 
 const app = express();
+
+app.use(cors());          // ✅ allow GitHub Pages → Render requests
 app.use(express.json());
 
 /* =========================
@@ -42,7 +44,6 @@ function validEmail(e) {
 app.post("/signup", signupLimiter, async (req, res) => {
   const { email, password, website } = req.body;
 
-  // honeypot bot trap
   if (website) {
     return res.status(400).send("Bot rejected");
   }
@@ -57,8 +58,6 @@ app.post("/signup", signupLimiter, async (req, res) => {
     return res.status(400).send("Password must be at least 6 characters");
 
   try {
-    /* ===== CHECK DUPLICATE ===== */
-
     const check = await fetch(`${KOMGA_URL}/api/v1/users`, {
       headers: { Authorization: authHeader() }
     });
@@ -70,8 +69,6 @@ app.post("/signup", signupLimiter, async (req, res) => {
 
     if (users.some(u => u.email.toLowerCase() === email.toLowerCase()))
       return res.status(400).send("Account already exists");
-
-    /* ===== CREATE ===== */
 
     const create = await fetch(`${KOMGA_URL}/api/v1/users`, {
       method: "POST",
