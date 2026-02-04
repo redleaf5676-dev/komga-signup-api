@@ -6,43 +6,39 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Komga server details from ENV
-const KOMGA_URL = process.env.KOMGA_URL;
-const ADMIN_EMAIL = process.env.KOMGA_USER;
-const ADMIN_PASSWORD = process.env.KOMGA_PASS;
+const KOMGA = process.env.KOMGA_URL;
+const USER = process.env.KOMGA_USER;
+const PASS = process.env.KOMGA_PASS;
 
-app.post("/signup", async (req, res) => {
+app.post("/signup", async (req,res)=>{
 
   const { email, password } = req.body;
 
   try {
 
-    const response = await axios.post(
-      `${KOMGA_URL}/api/v1/users`,
+    await axios.post(
+      `${KOMGA}/api/v2/users`,
       {
-        email: email,
-        password: password,
-        roles: ['USER']   // unchanged as you requested
+        email,
+        password,
+        roles: ["USER"],
+        sharedAllLibraries: true,
+        sharedLibrariesIds: [],
+        labelsAllow: [],
+        labelsExclude: [],
+        ageRestriction: null
       },
       {
-        auth: {
-          username: ADMIN_EMAIL,
-          password: ADMIN_PASSWORD
-        }
+        auth: { username: USER, password: PASS }
       }
     );
 
-    res.send("User created");
+    res.send("Account created");
 
-  } catch (error) {
-    console.error(
-      'Error creating user:',
-      error.response ? error.response.data : error.message
-    );
-
-    res.status(500).send(
-      error.response ? error.response.data : error.message
-    );
+  } catch (e) {
+    console.error(e.response?.data || e.message);
+    res.status(e.response?.status || 500)
+       .send(e.response?.data || "Komga error");
   }
 });
 
